@@ -1,0 +1,39 @@
+{{ define "main" }}
+<h1 class="!mb-2 !mt-8 !leading-tight"><a href="{{ .RelPermalink | strings.TrimRight "/" }}" class="no-underline">{{ .Title }}</a></h1>
+
+<div class="not-prose flex flex-row flex-wrap items-baseline gap-2 text-slate-400 !mb-8">
+  <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "2 Jan 2006" }}</time>{{ with .Params.tags }}<span>&middot;</span>{{ range . }}
+  <a href="/tags/{{ . | urlize }}" class="no-underline hover:underline font-normal !text-slate-400 hover:!text-slate-700 dark:hover:!text-slate-200">#{{ . }}</a>{{ end }}{{ end }}
+</div>
+
+{{ .Content }}
+
+{{ $current := . }}
+{{ $myTags := .Params.tags }}
+{{ $related := slice }}
+{{ if $myTags }}
+  {{ range (where .Site.RegularPages "Type" "notes") }}
+    {{ if ne .File.UniqueID $current.File.UniqueID }}
+      {{ $shared := intersect (.Params.tags | default slice) $myTags }}
+      {{ if gt (len $shared) 0 }}
+        {{ $related = $related | append . }}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+{{ end }}
+
+{{ if $related }}
+  <aside aria-labelledby="related-heading" class="not-prose -mx-4 mt-10 px-4 py-3 bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 sm:rounded-lg">
+    <h2 id="related-heading" class="font-medium text-slate-600 dark:text-slate-300 mb-3">Somewhat related</h2>
+    <ul class="list-disc list-inside space-y-1.5">
+      {{ range $related }}
+        <li>
+          <a href="{{ .RelPermalink | strings.TrimRight "/" }}" class="text-slate-600 dark:text-slate-300 underline hover:text-slate-800 dark:hover:text-slate-100">{{ .Title }}</a>
+        </li>
+      {{ end }}
+    </ul>
+  </aside>
+{{ else }}
+  <hr class="!my-6">
+{{ end }}
+{{ end }}

@@ -1,0 +1,18 @@
+{{- /*
+Render fenced code blocks to match the npub theme output:
+
+    <pre class="chroma"><code>...spans...</code></pre>
+
+Hugo's default highlighter wraps the block in `<div class="highlight">`, adds
+`tabindex="0"` and `class="language-XYZ" data-lang="XYZ"`. We render with the
+standard highlighter and strip the extras so the markup is byte-identical to
+npub's chromaPreWrapper output.
+*/ -}}
+{{- $lang := .Type -}}
+{{- $opts := dict "guessSyntax" true -}}
+{{- $html := transform.Highlight .Inner $lang $opts -}}
+{{- $html = replace $html `<div class="highlight">` `` -}}
+{{- $html = strings.TrimSuffix `</div>` $html -}}
+{{- $html = replace $html `<pre tabindex="0" class="chroma">` `<pre class="chroma">` -}}
+{{- $html = replaceRE ` class="language-[^"]*" data-lang="[^"]*"` `` $html -}}
+{{- $html | safeHTML -}}

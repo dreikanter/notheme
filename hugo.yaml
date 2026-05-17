@@ -1,0 +1,72 @@
+baseURL: "https://alexmusayev.com/"
+locale: "en"
+title: "Alex Musayev on Code"
+theme: "notheme"
+
+# Hugo capitalizes taxonomy term titles by default. Match npub's lowercase
+# tag pages (e.g. "notes", not "Notes").
+capitalizeListTitles: false
+
+# Disable RSS for sections we don't need; we emit one custom RSS feed at /feed.xml
+disableKinds: ["taxonomy"]
+enableRobotsTXT: false
+enableEmoji: false
+
+# Notes live as page bundles in content/notes/<slug>/index.md.
+# Permalink strips the section: /<slug>/ matches npub's URLs.
+permalinks:
+  notes: "/:slug/"
+
+taxonomies:
+  tag: "tags"
+
+# Custom output format so the home page emits /feed.xml (matching npub) instead
+# of Hugo's default /index.xml.
+outputFormats:
+  Feed:
+    mediaType: "application/rss+xml"
+    baseName: "feed"
+    isPlainText: true
+    rel: "alternate"
+
+outputs:
+  home: ["HTML", "Feed"]
+  term: ["HTML"]
+  taxonomy: ["HTML"]
+
+# Markdown + chroma highlighting. We override the visual styles via a
+# pre-built inline CSS (light + dark scoped to .dark class) injected by the
+# layout, so the actual style name here is irrelevant — but we want class
+# attributes on tokens so the CSS applies.
+markup:
+  goldmark:
+    parser:
+      autoHeadingID: true
+      autoHeadingIDType: "github"
+    renderer:
+      unsafe: true
+    extensions:
+      typographer:
+        disable: true
+  highlight:
+    noClasses: false
+    style: "monokailight"
+    codeFences: true
+    guessSyntax: true
+    lineNos: false
+    tabWidth: 4
+
+params:
+  # canonicalURL is the public URL used in the footer link, regardless of the
+  # dev-server URL Hugo substitutes for baseURL during `hugo server`.
+  canonicalURL: "https://alexmusayev.com"
+  author: "Alex Musayev"
+  intro: "Short notes on what I'm building, breaking, and figuring out along the way – patterns, tools, gotchas and ideas. Written for my future self, published in case they're useful to somebody else."
+  license:
+    name: "CC BY 4.0"
+    url: "https://creativecommons.org/licenses/by/4.0/"
+  generator: "hugo+notheme"
+  counterDevID: "d94a1231-14bd-47f9-ad32-cf1a9b40d2a5"
+
+build:
+  noJSConfigInAssets: true
