@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>{{ .Site.Title }}</title>
+    <link>{{ .Site.BaseURL | strings.TrimRight "/" }}</link>
+    <atom:link href="{{ "feed.xml" | absURL }}" rel="self" type="application/rss+xml" />
+    <description></description>
+    {{ range .Site.RegularPages.ByParam "uid" | collections.Reverse }}
+    <item>
+      <title>{{ .Title }}</title>
+      <link>{{ .Permalink | strings.TrimRight "/" }}</link>
+      <guid>{{ .Params.uid }}</guid>
+      <description><![CDATA[{{ .Content }}]]></description>
+    </item>
+    {{ end }}
+  </channel>
+</rss>

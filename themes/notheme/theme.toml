@@ -1,0 +1,5 @@
+name = "notheme"
+license = "MIT"
+description = "Hugo port of the npub theme"
+homepage = "https://alexmusayev.com"
+min_version = "0.146.0"

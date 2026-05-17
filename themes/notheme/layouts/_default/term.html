@@ -1,0 +1,21 @@
+{{ define "main" }}
+{{- $tag := .Data.Term -}}
+<h1 class="!mb-8 !mt-8 !leading-tight"><a href="/tags/{{ $tag }}" class="no-underline">#{{ $tag }}</a></h1>
+{{ partial "mobile_tags.html" (dict "page" . "currentTag" $tag) }}
+
+<div class="flex flex-row gap-8">
+  <div class="flex-1 min-w-0">
+    <ul class="list-none sm:list-disc !ps-0 sm:!ps-[1.625em] !my-0">
+      {{- range .Pages.ByParam "uid" | collections.Reverse }}
+        <li class="leading-normal !ps-0 sm:!ps-[0.375em]">
+          <a href="{{ .RelPermalink | strings.TrimRight "/" }}">{{ .Title }}</a><br>
+          <small class="text-sm text-slate-400"><time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "2006/01/02" }}</time></small>
+        </li>
+      {{- end }}
+    </ul>
+  </div>
+  {{- partial "tags.html" (dict "page" . "currentTag" $tag) }}
+</div>
+
+<hr class="!my-6">
+{{ end }}
