@@ -11,7 +11,8 @@ A Hugo theme and supporting tooling that publishes a personal
   Hugo page bundles into `content/notes/`. The long-term goal is to
   interact with the archive strictly through the `notes` CLI; today the
   tool still links the `notes` Go library while the CLI catches up
-  ([dreikanter/notes#281](https://github.com/dreikanter/notes/issues/281)).
+  ([dreikanter/notes#282](https://github.com/dreikanter/notes/issues/282),
+  [#283](https://github.com/dreikanter/notes/issues/283)).
 - `tools/deploy.sh` — pushes `./public/` to the deploy git remote.
 - `Makefile` — entry points.
 
