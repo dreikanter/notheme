@@ -7,18 +7,12 @@ theme: "notheme"
 # tag pages (e.g. "notes", not "Notes").
 capitalizeListTitles: false
 
-# Disable Hugo extras npub doesn't emit:
+# Disable Hugo extras the live site doesn't emit:
 #  - taxonomy: the /tags/ index (we don't link to it)
-#  - section:  the /notes/ section list (posts use /<slug>/ permalinks)
-#  - sitemap:  /sitemap.xml (live site doesn't serve one)
-disableKinds: ["taxonomy", "section", "sitemap"]
+#  - sitemap:  /sitemap.xml
+disableKinds: ["taxonomy", "sitemap"]
 enableRobotsTXT: false
 enableEmoji: false
-
-# Notes live as page bundles in content/notes/<slug>/index.md.
-# Permalink strips the section: /<slug>/ matches npub's URLs.
-permalinks:
-  notes: "/:slug/"
 
 taxonomies:
   tag: "tags"

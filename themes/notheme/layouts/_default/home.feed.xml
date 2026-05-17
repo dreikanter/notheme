@@ -5,7 +5,7 @@
     <link>{{ .Site.BaseURL | strings.TrimRight "/" }}</link>
     <atom:link href="{{ "feed.xml" | absURL }}" rel="self" type="application/rss+xml" />
     <description></description>
-    {{ range (where .Site.RegularPages "Type" "notes") }}
+    {{ range .Site.RegularPages.ByParam "uid" | collections.Reverse }}
     <item>
       <title>{{ .Title }}</title>
       <link>{{ .Permalink | strings.TrimRight "/" }}</link>

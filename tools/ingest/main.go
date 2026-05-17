@@ -1,23 +1,21 @@
-// ingest reads public notes from a notes store and stages them as Hugo page
-// bundles. It is the bridge between a notes archive and the Hugo theme in
-// this repository.
+// ingest stages public notes from the `notes` archive as Hugo page bundles.
 //
-// For each note with `public: true` in its frontmatter, ingest writes:
+// It is a thin orchestrator around the `notes` CLI: it calls
+// `notes ls --public` for the ID list and `notes read --json` for the
+// content, then writes one Hugo page bundle per note to
+// <content>/<slug>/index.md.
 //
-//	<content_dir>/notes/<slug>/index.md
+// Two body transforms run before the markdown is written:
 //
-// with Hugo-style frontmatter (title, date, slug, tags, aliases, description,
-// uid). Body Markdown is preserved verbatim except for two transforms:
+//  1. `[text](<id>)` references between public notes are rewritten to
+//     `[text](/<slug>/)` using the ID→slug map built from the same fetch.
+//  2. `![alt](../../images/<file>)` references — the convention used by the
+//     notes archive after the cache migration — are copied from
+//     $NOTES_PATH/images/<file> into the page bundle, and the markdown is
+//     rewritten to a bare filename so Hugo's page-bundle resolution finds it.
 //
-//  1. `[text](<id>)` references to other public notes are rewritten to
-//     `[text](/<slug>/)` so Hugo doesn't need to know about note IDs.
-//  2. External image URLs are resolved against the local image cache
-//     (<notes>/images/index.json) — the cached file is copied into the
-//     page bundle and the URL is rewritten to a relative filename.
-//
-// The slug computation, UID format, link rewriting, and legacy `/<UID>/` +
-// `/<UID>/<slug>/` aliases all mirror what npub produces, so the resulting
-// site URLs match what alexmusayev.com serves.
+// The tool has no dependency on the notes Go library and no knowledge of
+// the npub image cache. Both are gone.
 package main
 
 import (
@@ -25,80 +23,90 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/dreikanter/notes/note"
 	"gopkg.in/yaml.v3"
 )
 
-type imageEntry struct {
-	FileName string `json:"file_name"`
-	PageUID  string `json:"page_uid"`
+type noteRecord struct {
+	ID          int      `json:"id"`
+	UID         string   `json:"uid"`
+	Title       string   `json:"title"`
+	Slug        string   `json:"slug"`
+	Tags        []string `json:"tags"`
+	Date        string   `json:"date"`
+	Description string   `json:"description"`
+	Public      bool     `json:"public"`
+	Body        string   `json:"body"`
 }
 
 func main() {
-	notesPath := flag.String("notes", os.Getenv("NOTES_PATH"), "path to notes store (default: $NOTES_PATH)")
-	assetsPath := flag.String("assets", "", "path to image cache (default: <notes>/images)")
 	contentDir := flag.String("content", "content", "Hugo content directory to write to")
 	flag.Parse()
 
-	resolvedNotes := expandHome(*notesPath)
-	if resolvedNotes == "" {
-		fatal("no notes path: set $NOTES_PATH or pass --notes")
-	}
-	resolvedAssets := expandHome(*assetsPath)
-	if resolvedAssets == "" {
-		resolvedAssets = filepath.Join(resolvedNotes, "images")
+	notesPath := os.Getenv("NOTES_PATH")
+	if notesPath == "" {
+		fatal("$NOTES_PATH is not set")
 	}
 
-	store := note.NewOSStore(resolvedNotes)
-	entries, err := store.All(note.WithPublic(true))
+	ids, err := listPublicIDs()
 	if err != nil {
-		fatal("reading notes: %v", err)
+		fatal("notes ls --public: %v", err)
+	}
+	if len(ids) == 0 {
+		fatal("no public notes returned by `notes ls --public`")
 	}
 
-	pages := buildPages(entries)
-	idToSlug := make(map[int]string, len(pages))
-	for _, p := range pages {
-		idToSlug[p.ID] = p.Slug
-	}
-
-	imageCache, err := loadImageCache(resolvedAssets)
+	notes, err := readJSON(ids)
 	if err != nil {
-		warn("loading image cache: %v", err)
-		imageCache = make(map[string]imageEntry)
+		fatal("notes read --json: %v", err)
 	}
 
-	notesOut := filepath.Join(*contentDir, "notes")
-	if err := wipeContent(notesOut); err != nil {
-		fatal("clearing %s: %v", notesOut, err)
-	}
-	if err := os.MkdirAll(notesOut, 0o755); err != nil {
-		fatal("creating %s: %v", notesOut, err)
+	// The CLI returns the raw frontmatter slug. Fall back to a slugified
+	// title, then to the numeric ID — matching npub's chooseSlug() so that
+	// notes without an explicit slug still get a stable URL.
+	for i := range notes {
+		notes[i].Slug = resolveSlug(notes[i])
 	}
 
-	for _, p := range pages {
-		bundleDir := filepath.Join(notesOut, p.Slug)
+	// Build the ID → slug map across all public notes for link rewriting.
+	idToSlug := make(map[int]string, len(notes))
+	for _, n := range notes {
+		idToSlug[n.ID] = n.Slug
+	}
+
+	if err := wipeBundles(*contentDir); err != nil {
+		fatal("clearing %s: %v", *contentDir, err)
+	}
+	if err := os.MkdirAll(*contentDir, 0o755); err != nil {
+		fatal("creating %s: %v", *contentDir, err)
+	}
+
+	imagesRoot := filepath.Join(notesPath, "images")
+	for _, n := range notes {
+		bundleDir := filepath.Join(*contentDir, n.Slug)
 		if err := os.MkdirAll(bundleDir, 0o755); err != nil {
 			fatal("creating bundle %s: %v", bundleDir, err)
 		}
 
-		body := rewriteNoteLinks(p.Body, idToSlug)
-		body, attachments := rewriteImages(body, p.UID, resolvedAssets, imageCache)
+		body := rewriteNoteLinks(n.Body, idToSlug)
+		body, attachments := flattenImagePaths(body)
 
-		for src, dst := range attachments {
-			if err := copyFile(src, filepath.Join(bundleDir, dst)); err != nil {
-				warn("copying attachment %s -> %s: %v", src, dst, err)
+		for _, name := range attachments {
+			src := filepath.Join(imagesRoot, name)
+			if err := copyFile(src, filepath.Join(bundleDir, name)); err != nil {
+				warn("copying %s into %s: %v", src, bundleDir, err)
 			}
 		}
 
-		md, err := renderHugoMarkdown(p, body)
+		md, err := renderHugoMarkdown(n, body)
 		if err != nil {
-			fatal("rendering %s: %v", p.UID, err)
+			fatal("rendering %s: %v", n.UID, err)
 		}
 		if err := os.WriteFile(filepath.Join(bundleDir, "index.md"), md, 0o644); err != nil {
 			fatal("writing %s: %v", bundleDir, err)
@@ -109,52 +117,41 @@ func main() {
 		fatal("writing home index: %v", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "ingested %d public notes -> %s\n", len(pages), notesOut)
+	fmt.Fprintf(os.Stderr, "ingested %d public notes -> %s\n", len(notes), *contentDir)
 }
 
-type pageInfo struct {
-	ID          int
-	UID         string
-	Slug        string
-	Title       string
-	Description string
-	Tags        []string
-	Date        string // YYYY-MM-DDTHH:MM:SS+ZONE
-	Body        string
-}
-
-func buildPages(entries []note.Entry) []pageInfo {
-	out := make([]pageInfo, 0, len(entries))
-	for _, e := range entries {
-		uid := e.Meta.CreatedAt.Format("20060102") + "_" + strconv.Itoa(e.ID)
-		slug := chooseSlug(e)
-		title := e.Meta.Title
-		if title == "" {
-			title = uid
-		}
-		out = append(out, pageInfo{
-			ID:          e.ID,
-			UID:         uid,
-			Slug:        slug,
-			Title:       title,
-			Description: e.Meta.Description,
-			Tags:        e.Meta.Tags,
-			Date:        e.Meta.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			Body:        e.Body,
-		})
+func listPublicIDs() ([]string, error) {
+	out, err := exec.Command("notes", "ls", "--public").Output()
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UID > out[j].UID })
-	return out
+	fields := strings.Fields(string(out))
+	return fields, nil
 }
 
-func chooseSlug(e note.Entry) string {
-	if s := slugify(e.Meta.Slug); s != "" {
+func readJSON(ids []string) ([]noteRecord, error) {
+	args := append([]string{"read", "--json"}, ids...)
+	out, err := exec.Command("notes", args...).Output()
+	if err != nil {
+		return nil, err
+	}
+	var notes []noteRecord
+	if err := json.Unmarshal(out, &notes); err != nil {
+		return nil, fmt.Errorf("decoding json: %w (first 200 bytes: %q)", err, truncate(out, 200))
+	}
+	// Sort newest first, matching npub's site order.
+	sort.Slice(notes, func(i, j int) bool { return notes[i].UID > notes[j].UID })
+	return notes, nil
+}
+
+func resolveSlug(n noteRecord) string {
+	if s := slugify(n.Slug); s != "" {
 		return s
 	}
-	if s := slugify(e.Meta.Title); s != "" {
+	if s := slugify(n.Title); s != "" {
 		return s
 	}
-	return strconv.Itoa(e.ID)
+	return strconv.Itoa(n.ID)
 }
 
 var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]+`)
@@ -166,13 +163,13 @@ func slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// linkPattern captures Markdown links whose href is a positive integer (note
-// ID reference). Group 1 = link text, group 2 = id.
-var linkPattern = regexp.MustCompile(`\[([^\]]+)\]\((\d+)\)`)
+// noteLinkPattern matches Markdown links whose destination is a positive
+// integer (a note-ID reference).
+var noteLinkPattern = regexp.MustCompile(`\[([^\]]+)\]\((\d+)\)`)
 
 func rewriteNoteLinks(body string, idToSlug map[int]string) string {
-	return linkPattern.ReplaceAllStringFunc(body, func(match string) string {
-		m := linkPattern.FindStringSubmatch(match)
+	return noteLinkPattern.ReplaceAllStringFunc(body, func(match string) string {
+		m := noteLinkPattern.FindStringSubmatch(match)
 		id, err := strconv.Atoi(m[2])
 		if err != nil {
 			return match
@@ -185,44 +182,42 @@ func rewriteNoteLinks(body string, idToSlug map[int]string) string {
 	})
 }
 
-// imagePattern: ![alt](url) — URL only when it starts with http(s)://
-var imagePattern = regexp.MustCompile(`!\[([^\]]*)\]\((https?://[^)\s]+)\)`)
+// imagePathPattern matches `![alt](../../images/X)` — the path convention
+// used by the notes archive after the image cache migration.
+var imagePathPattern = regexp.MustCompile(`!\[([^\]]*)\]\(\.\./\.\./images/([^)\s]+)\)`)
 
-func rewriteImages(body, uid, assetsRoot string, cache map[string]imageEntry) (string, map[string]string) {
-	attachments := make(map[string]string)
-	out := imagePattern.ReplaceAllStringFunc(body, func(match string) string {
-		m := imagePattern.FindStringSubmatch(match)
-		alt, url := m[1], m[2]
-		entry, ok := cache[url]
-		if !ok {
-			return match
+// flattenImagePaths rewrites `../../images/<file>` references to a bare
+// filename (so they resolve against the Hugo page bundle), and returns
+// the list of filenames that need to be copied into the bundle.
+func flattenImagePaths(body string) (string, []string) {
+	seen := map[string]struct{}{}
+	var files []string
+	out := imagePathPattern.ReplaceAllStringFunc(body, func(match string) string {
+		m := imagePathPattern.FindStringSubmatch(match)
+		alt, name := m[1], m[2]
+		if _, ok := seen[name]; !ok {
+			seen[name] = struct{}{}
+			files = append(files, name)
 		}
-		src := filepath.Join(assetsRoot, entry.PageUID, entry.FileName)
-		if _, err := os.Stat(src); err != nil {
-			warn("image not on disk for %s in note %s (expected %s)", url, uid, src)
-			return match
-		}
-		attachments[src] = entry.FileName
-		return "![" + alt + "](" + entry.FileName + ")"
+		return "![" + alt + "](" + name + ")"
 	})
-	return out, attachments
+	return out, files
 }
 
-func renderHugoMarkdown(p pageInfo, body string) ([]byte, error) {
+func renderHugoMarkdown(n noteRecord, body string) ([]byte, error) {
 	fm := map[string]any{
-		"title":       p.Title,
-		"date":        p.Date,
-		"slug":        p.Slug,
-		"description": p.Description,
-		"uid":         p.UID,
-		"type":        "notes",
+		"title":       n.Title,
+		"date":        n.Date,
+		"slug":        n.Slug,
+		"description": n.Description,
+		"uid":         n.UID,
 		"aliases": []string{
-			"/" + p.UID + "/",
-			"/" + p.UID + "/" + p.Slug + "/",
+			"/" + n.UID + "/",
+			"/" + n.UID + "/" + n.Slug + "/",
 		},
 	}
-	if len(p.Tags) > 0 {
-		fm["tags"] = p.Tags
+	if len(n.Tags) > 0 {
+		fm["tags"] = n.Tags
 	}
 
 	yamlBytes, err := yaml.Marshal(fm)
@@ -239,32 +234,36 @@ func renderHugoMarkdown(p pageInfo, body string) ([]byte, error) {
 	return []byte(out.String()), nil
 }
 
+// writeHomeIndex creates an empty content/_index.md if absent. Hugo needs
+// it to render the home list page.
 func writeHomeIndex(contentDir string) error {
 	path := filepath.Join(contentDir, "_index.md")
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	}
-	body := "---\ntitle: \"\"\n---\n"
-	return os.WriteFile(path, []byte(body), 0o644)
+	return os.WriteFile(path, []byte("---\ntitle: \"\"\n---\n"), 0o644)
 }
 
-func loadImageCache(assetsPath string) (map[string]imageEntry, error) {
-	data, err := os.ReadFile(filepath.Join(assetsPath, "index.json"))
+// wipeBundles removes every subdirectory of contentDir, leaving files
+// (like _index.md) untouched. Subdirectories are owned by this tool: each
+// one corresponds to a single note's page bundle.
+func wipeBundles(contentDir string) error {
+	entries, err := os.ReadDir(contentDir)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	}
-	var idx map[string]imageEntry
-	if err := json.Unmarshal(data, &idx); err != nil {
-		return nil, err
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(contentDir, e.Name())); err != nil {
+			return err
+		}
 	}
-	return idx, nil
-}
-
-func wipeContent(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return nil
-	}
-	return os.RemoveAll(dir)
+	return nil
 }
 
 func copyFile(src, dst string) error {
@@ -275,14 +274,11 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0o644)
 }
 
-func expandHome(p string) string {
-	if strings.HasPrefix(p, "~/") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			return filepath.Join(home, p[2:])
-		}
+func truncate(b []byte, n int) []byte {
+	if len(b) <= n {
+		return b
 	}
-	return p
+	return b[:n]
 }
 
 func fatal(format string, args ...any) {

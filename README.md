@@ -7,12 +7,9 @@ A Hugo theme and supporting tooling that publishes a personal
 
 - `hugo.yaml` — site configuration.
 - `themes/notheme/` — the Hugo theme (layouts, partials, assets).
-- `tools/ingest/` — staging tool that reads the notes archive and writes
-  Hugo page bundles into `content/notes/`. The long-term goal is to
-  interact with the archive strictly through the `notes` CLI; today the
-  tool still links the `notes` Go library while the CLI catches up
-  ([dreikanter/notes#282](https://github.com/dreikanter/notes/issues/282),
-  [#283](https://github.com/dreikanter/notes/issues/283)).
+- `tools/ingest/` — staging tool that reads the notes archive via the
+  [`notes`](https://github.com/dreikanter/notes) CLI (`ls --public` +
+  `read --json`) and writes Hugo page bundles into `content/<slug>/`.
 - `tools/deploy.sh` — pushes `./public/` to the deploy git remote.
 - `Makefile` — entry points.
 

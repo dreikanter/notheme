@@ -12,7 +12,7 @@
 {{ $myTags := .Params.tags }}
 {{ $related := slice }}
 {{ if $myTags }}
-  {{ range (where .Site.RegularPages "Type" "notes") }}
+  {{ range .Site.RegularPages }}
     {{ if ne .File.UniqueID $current.File.UniqueID }}
       {{ $shared := intersect (.Params.tags | default slice) $myTags }}
       {{ if gt (len $shared) 0 }}
