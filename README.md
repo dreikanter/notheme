@@ -1,7 +1,7 @@
-# notheme
+# Notes theme for Hugo
 
-A Hugo theme + configuration that renders the same site as
-[npub](https://github.com/dreikanter/npub) from a `~/Dropbox/Notes` archive.
+A Hugo theme + experimental configuration that renders the same site as
+[npub](https://github.com/dreikanter/npub) from a local notes archive.
 
 ## Layout
 
@@ -31,7 +31,7 @@ A Hugo theme + configuration that renders the same site as
 
 ## How it stays in sync with the notes archive
 
-The `notheme` repo never imports or modifies the notes — it reads them via the
+The `notheme` repo never imports or modifies the notes. It reads them via the
 `notes` Go library, the same library npub itself uses. So the slug rules,
 public filter, UID derivation, and tag merging match npub exactly:
 
@@ -79,16 +79,6 @@ DEPLOY_REPO=git@github.com:user/staging.git DEPLOY_BRANCH=gh-pages make deploy
 ```
 
 ## Verifying against the live site
-
-The HTML output is structurally identical to `alexmusayev.com`. The
-remaining differences are:
-
-- Whitespace (line-break placement around block elements).
-- A single tag (`#thoughts`) that the live site shows on `/naming-things/`
-  but that's missing from the current notes archive frontmatter.
-- npub emits `<pre class="chroma" class="chroma">` (duplicate class attribute,
-  a quirk of its chroma pre-wrapper). The Hugo theme emits the cleaner
-  `<pre class="chroma">`.
 
 Tested with Playwright against both sites at the same viewport — visual
 rendering is pixel-identical for the home, post, and tag pages.
