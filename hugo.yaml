@@ -7,8 +7,11 @@ theme: "notheme"
 # tag pages (e.g. "notes", not "Notes").
 capitalizeListTitles: false
 
-# Disable RSS for sections we don't need; we emit one custom RSS feed at /feed.xml
-disableKinds: ["taxonomy"]
+# Disable Hugo extras npub doesn't emit:
+#  - taxonomy: the /tags/ index (we don't link to it)
+#  - section:  the /notes/ section list (posts use /<slug>/ permalinks)
+#  - sitemap:  /sitemap.xml (live site doesn't serve one)
+disableKinds: ["taxonomy", "section", "sitemap"]
 enableRobotsTXT: false
 enableEmoji: false
 

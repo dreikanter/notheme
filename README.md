@@ -56,6 +56,27 @@ make build
 make serve
 ```
 
+## Deploy
+
+`make deploy` builds the site and pushes `./public/` to the deploy git remote
+(default: `git@github.com:dreikanter/alexmusayev.com.git`, branch `main`).
+
+The deploy is in `tools/deploy.sh` and mirrors npub's bare-clone model: it
+keeps a bare clone at `~/.cache/notheme/<repo>.git` and uses `./public/` as
+the work-tree, so there's no second copy of the site on disk and stale
+files are removed automatically by `git add -A`.
+
+```sh
+make deploy-dry   # build + commit locally, do not push (inspect first)
+make deploy       # build + commit + push
+```
+
+Override the target with env vars:
+
+```sh
+DEPLOY_REPO=git@github.com:user/staging.git DEPLOY_BRANCH=gh-pages make deploy
+```
+
 ## Verifying against the live site
 
 The HTML output is structurally identical to `alexmusayev.com`. The
