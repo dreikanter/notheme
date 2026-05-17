@@ -1,6 +1,6 @@
 // ingest reads public notes from a notes store and stages them as Hugo page
-// bundles. It is the bridge between the npub-style notes archive and the
-// Hugo theme in this repository.
+// bundles. It is the bridge between a notes archive and the Hugo theme in
+// this repository.
 //
 // For each note with `public: true` in its frontmatter, ingest writes:
 //
@@ -11,9 +11,9 @@
 //
 //  1. `[text](<id>)` references to other public notes are rewritten to
 //     `[text](/<slug>/)` so Hugo doesn't need to know about note IDs.
-//  2. External image URLs are resolved against the npub image cache
-//     (~/Dropbox/Notes/images/index.json) — the cached file is copied into
-//     the page bundle and the URL is rewritten to a relative filename.
+//  2. External image URLs are resolved against the local image cache
+//     (<notes>/images/index.json) — the cached file is copied into the
+//     page bundle and the URL is rewritten to a relative filename.
 //
 // The slug computation, UID format, link rewriting, and legacy `/<UID>/` +
 // `/<UID>/<slug>/` aliases all mirror what npub produces, so the resulting
@@ -35,36 +35,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type npubConfig struct {
-	NotesPath  string `yaml:"notes_path"`
-	AssetsPath string `yaml:"assets_path"`
-	SiteName   string `yaml:"site_name"`
-	AuthorName string `yaml:"author_name"`
-	Intro      string `yaml:"intro"`
-}
-
 type imageEntry struct {
 	FileName string `json:"file_name"`
 	PageUID  string `json:"page_uid"`
 }
 
 func main() {
-	configPath := flag.String("config", expandHome("~/Dropbox/Notes/npub.yml"), "path to npub.yml (provides notes_path and image cache location)")
+	notesPath := flag.String("notes", os.Getenv("NOTES_PATH"), "path to notes store (default: $NOTES_PATH)")
+	assetsPath := flag.String("assets", "", "path to image cache (default: <notes>/images)")
 	contentDir := flag.String("content", "content", "Hugo content directory to write to")
 	flag.Parse()
 
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		fatal("loading config %s: %v", *configPath, err)
+	resolvedNotes := expandHome(*notesPath)
+	if resolvedNotes == "" {
+		fatal("no notes path: set $NOTES_PATH or pass --notes")
 	}
-	if cfg.NotesPath == "" {
-		fatal("notes_path is empty in %s", *configPath)
-	}
-	if cfg.AssetsPath == "" {
-		cfg.AssetsPath = filepath.Join(cfg.NotesPath, "images")
+	resolvedAssets := expandHome(*assetsPath)
+	if resolvedAssets == "" {
+		resolvedAssets = filepath.Join(resolvedNotes, "images")
 	}
 
-	store := note.NewOSStore(cfg.NotesPath)
+	store := note.NewOSStore(resolvedNotes)
 	entries, err := store.All(note.WithPublic(true))
 	if err != nil {
 		fatal("reading notes: %v", err)
@@ -76,7 +67,7 @@ func main() {
 		idToSlug[p.ID] = p.Slug
 	}
 
-	imageCache, err := loadImageCache(cfg.AssetsPath)
+	imageCache, err := loadImageCache(resolvedAssets)
 	if err != nil {
 		warn("loading image cache: %v", err)
 		imageCache = make(map[string]imageEntry)
@@ -97,7 +88,7 @@ func main() {
 		}
 
 		body := rewriteNoteLinks(p.Body, idToSlug)
-		body, attachments := rewriteImages(body, p.UID, cfg.AssetsPath, imageCache)
+		body, attachments := rewriteImages(body, p.UID, resolvedAssets, imageCache)
 
 		for src, dst := range attachments {
 			if err := copyFile(src, filepath.Join(bundleDir, dst)); err != nil {
@@ -255,20 +246,6 @@ func writeHomeIndex(contentDir string) error {
 	}
 	body := "---\ntitle: \"\"\n---\n"
 	return os.WriteFile(path, []byte(body), 0o644)
-}
-
-func loadConfig(path string) (npubConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return npubConfig{}, err
-	}
-	var cfg npubConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return npubConfig{}, err
-	}
-	cfg.NotesPath = expandHome(cfg.NotesPath)
-	cfg.AssetsPath = expandHome(cfg.AssetsPath)
-	return cfg, nil
 }
 
 func loadImageCache(assetsPath string) (map[string]imageEntry, error) {

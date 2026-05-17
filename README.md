@@ -21,11 +21,12 @@ A Hugo theme + configuration that renders the same site as
   - `assets/style.css` — copied verbatim from npub.
   - `assets/chroma.css` — chroma highlight CSS for both light and dark themes,
     scoped under `html:not(.dark)` / `html.dark`.
-- `tools/ingest/` — small Go program that reads `~/Dropbox/Notes/npub.yml`,
-  walks the notes archive via `github.com/dreikanter/notes`, and stages
-  every note with `public: true` as a Hugo page bundle under
-  `content/notes/<slug>/index.md`. It also rewrites `[text](<id>)`
-  references and copies cached external images from the npub image cache.
+- `tools/ingest/` — small Go program that walks the notes archive via
+  `github.com/dreikanter/notes` and stages every note with `public: true` as
+  a Hugo page bundle under `content/notes/<slug>/index.md`. It rewrites
+  `[text](<id>)` references between notes and copies cached external images.
+  Configured by flags (`--notes`, `--assets`, `--content`); `--notes`
+  defaults to `$NOTES_PATH`, matching the `notes` CLI convention.
 - `Makefile` — `make ingest`, `make build`, `make serve`, `make clean`.
 
 ## How it stays in sync with the notes archive
@@ -34,8 +35,8 @@ The `notheme` repo never imports or modifies the notes — it reads them via the
 `notes` Go library, the same library npub itself uses. So the slug rules,
 public filter, UID derivation, and tag merging match npub exactly:
 
-1. `make ingest` reads `~/Dropbox/Notes/npub.yml` for the notes path and
-   walks the archive.
+1. `make ingest` walks `$NOTES_PATH` (override with `--notes`) and stages
+   every note whose frontmatter has `public: true`.
 2. Each public note is rendered as a Hugo page bundle with frontmatter
    carrying `title`, `date`, `slug`, `tags`, `description`, `uid`, plus
    `aliases` for the legacy `/<UID>/` and `/<UID>/<slug>/` URLs.
