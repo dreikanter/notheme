@@ -183,8 +183,10 @@ func rewriteNoteLinks(body string, idToSlug map[int]string) string {
 }
 
 // imagePathPattern matches `![alt](../../images/X)` — the path convention
-// used by the notes archive after the image cache migration.
-var imagePathPattern = regexp.MustCompile(`!\[([^\]]*)\]\(\.\./\.\./images/([^)\s]+)\)`)
+// used by the notes archive after the image cache migration. Markdown
+// permits an optional title after the URL (`"…"`, `'…'`, or `(…)`); the
+// non-capturing group at the end tolerates it.
+var imagePathPattern = regexp.MustCompile(`!\[([^\]]*)\]\(\.\./\.\./images/([^)\s]+)(?:\s+"[^"]*"|\s+'[^']*'|\s+\([^)]*\))?\)`)
 
 // flattenImagePaths rewrites `../../images/<file>` references to a bare
 // filename (so they resolve against the Hugo page bundle), and returns

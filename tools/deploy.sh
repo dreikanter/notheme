@@ -55,9 +55,11 @@ git --git-dir="$CACHE_DIR" update-ref "refs/heads/$DEPLOY_BRANCH" \
   "refs/remotes/origin/$DEPLOY_BRANCH" 2>/dev/null || true
 
 # Reset the index to match the remote so `add -A` sees true add/modify/delete.
-GIT_INDEX_FILE="$CACHE_DIR/index" \
-  git --git-dir="$CACHE_DIR" --work-tree="$PWD/public" \
-  read-tree --reset -u "refs/heads/$DEPLOY_BRANCH" 2>/dev/null || true
+# IMPORTANT: do NOT pass -u here. With -u, read-tree updates the work-tree to
+# match the read tree, which wipes the freshly-built ./public/ contents and
+# guarantees `add -A` reports nothing to commit. We only want the index reset.
+git --git-dir="$CACHE_DIR" --work-tree="$PWD/public" \
+  read-tree --reset "refs/heads/$DEPLOY_BRANCH" 2>/dev/null || true
 
 # Stage the entire built site.
 git --git-dir="$CACHE_DIR" --work-tree="$PWD/public" add -A
